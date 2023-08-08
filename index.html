@@ -1,0 +1,125 @@
+<html lang="zh">
+<head>
+</head>
+<body>
+<div style="display: flex">
+    <video id="serverVideo" autoplay playsinline style="width: 900px;height: 800px;border: 1px solid #eeeeee"></video>
+    <div style="display: inline-block;margin-left: 15px">
+        <button id="btn_start" style="display: block;margin-bottom: 15px">开始</button>
+        <button id="btn_stop" style="display: none;margin-bottom: 15px">停止</button>
+        <input id="jump_in_url" type="text" style="width: 500px;display: none;" value="videos/jumpin_0.mp4">
+        <button id="btn_jump_in" style="display: none;margin-bottom: 15px">插播</button>
+    </div>
+</div>
+
+</body>
+<script>
+    let conn_id;
+    let pc;
+    const video = document.getElementById('serverVideo')
+    const btn_start = document.getElementById('btn_start');
+    const btn_stop = document.getElementById('btn_stop');
+    const btn_jump_in = document.getElementById('btn_jump_in');
+
+    video.addEventListener('play', function () {
+        toggle_button_visibility()
+    });
+
+    function toggle_button_visibility() {
+        if (btn_stop.style.display === "none") {
+            btn_stop.style.display = "block"
+        } else {
+            btn_stop.style.display = "none"
+        }
+        if (btn_jump_in.style.display === "none") {
+            btn_jump_in.style.display = "block"
+        } else {
+            btn_jump_in.style.display = "none"
+        }
+        const jumpin_url = document.getElementById("jump_in_url")
+        if (jumpin_url.style.display === "none") {
+            jumpin_url.style.display = "block"
+        } else {
+            jumpin_url.style.display = "none"
+        }
+    }
+
+    btn_start.addEventListener('click', function () {
+        conn_id = "conn_" + new Date().getTime()
+        pc = new RTCPeerConnection({});
+        pc.addEventListener('track', function (evt) {
+            video.srcObject = evt.streams[0];
+        });
+        negotiate(pc)
+    });
+
+    btn_stop.addEventListener('click', function () {
+        conn_id = undefined
+        toggle_button_visibility()
+        pc.close();
+    });
+
+    btn_jump_in.addEventListener('click', function () {
+        let jump_in_url = document.getElementById("jump_in_url").value
+        const data = {
+            url: jump_in_url,
+            id: conn_id
+        };
+        const options = {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        };
+        fetch("https://cofi-webrtc.viseem.com/jumpin", options)
+            .then(response => response.json())
+            .then(data => console.log(data))
+            .catch(error => console.error(error));
+    });
+
+
+    function negotiate() {
+        pc.addTransceiver('video', {direction: 'recvonly'});
+        pc.addTransceiver('audio', {direction: 'recvonly'});
+        return pc.createOffer().then(function (offer) {
+            return pc.setLocalDescription(offer);
+        }).then(function () {
+            // wait for ICE gathering to complete
+            return new Promise(function (resolve) {
+                if (pc.iceGatheringState === 'complete') {
+                    resolve();
+                } else {
+                    function checkState() {
+                        if (pc.iceGatheringState === 'complete') {
+                            pc.removeEventListener('icegatheringstatechange', checkState);
+                            resolve();
+                        }
+                    }
+
+                    pc.addEventListener('icegatheringstatechange', checkState);
+                }
+            });
+        }).then(function () {
+            var offer = pc.localDescription;
+            return fetch('https://cofi-webrtc.viseem.com/offer', {
+                body: JSON.stringify({
+                    sdp: offer.sdp,
+                    type: offer.type,
+                    conn_id: conn_id
+                }),
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                method: 'POST'
+            });
+        }).then(function (response) {
+            return response.json();
+        }).then(function (answer) {
+            return pc.setRemoteDescription(answer);
+        }).catch(function (e) {
+            alert(e);
+        });
+    }
+</script>
+</html>

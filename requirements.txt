@@ -1,0 +1,6 @@
+aiortc==1.5.0
+aiohttp==3.8.4
+av==10.0.0
+requests
+websocket-client
+rel==0.4.9
