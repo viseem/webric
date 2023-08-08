@@ -7,7 +7,7 @@ import time
 import traceback
 from queue import Queue, Empty
 from typing import Union
-import websocket
+import websockets
 import rel
 import time
 
@@ -297,68 +297,6 @@ async def index(request):
     content = open(os.path.join(ROOT, "index.html"), "r", encoding='utf-8').read()
     return web.Response(content_type="text/html", text=content)
 
-
-async def offer(request):
-    params = await request.json()
-    conn_id = params["conn_id"]
-    offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
-    pc = RTCPeerConnection()
-    pcs.add(pc)
-
-    player = SegmentPlayer(playlist=playlist)
-    players[conn_id] = player
-
-    @pc.on("connectionstatechange")
-    async def on_connectionstatechange():
-        print("Connection state is %s" % pc.connectionState)
-        if pc.connectionState == "failed":
-            await pc.close()
-            pcs.discard(pc)
-            player.stop()
-
-    @pc.on("iceconnectionstatechange")
-    async def on_iceconnectionstatechante():
-        logging.info("ice connection stat change: %s", pc.iceConnectionState)
-        if pc.iceConnectionState == "failed":
-            await pc.close()
-            pcs.discard(pc)
-            player.stop()
-
-    sender = pc.addTrack(player.video)
-    pc.addTrack(player.audio)
-
-    # aiortc.codecs.vpx.MIN_BITRATE = 2000000
-    # aiortc.codecs.vpx.DEFAULT_BITRATE = 2000000
-    # aiortc.codecs.vpx.MAX_BITRATE = 4000000
-
-    aiortc.codecs.h264.MIN_BITRATE = 2000000
-    aiortc.codecs.h264.DEFAULT_BITRATE = 2000000
-    aiortc.codecs.h264.MAX_BITRATE = 4000000
-    codecs = RTCRtpSender.getCapabilities("video").codecs
-    transceiver = next(t for t in pc.getTransceivers() if t.sender == sender)
-    transceiver.setCodecPreferences(
-        [codec for codec in codecs if codec.mimeType == "video/H264"]
-    )
-
-    player.start()
-
-    await pc.setRemoteDescription(offer)
-    answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
-
-    response = web.Response(
-        content_type="application/json",
-        text=json.dumps(
-            {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "id": conn_id}
-        ),
-    )
-    # 设置允许跨域请求
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    return response
-
-
 async def jump_in(request):
     params = await request.json()
     url = params["url"]
@@ -379,10 +317,9 @@ async def jump_in(request):
 
 async def on_message(ws, message):
     json_message = json.loads(message)
-    print(json_message)
     sdp = json_message["sdp"]
     type = json_message["type"]
-    client_id = json_message["from"]
+    client_id = json_message["client_id"]
 
     conn_id = client_id
     offer = RTCSessionDescription(sdp=sdp, type=type)
@@ -419,44 +356,26 @@ async def on_message(ws, message):
     transceiver.setCodecPreferences(
         [codec for codec in codecs if codec.mimeType == "video/H264"]
     )
-
-    player.start()
-
+    
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
-    ws.send(json.dumps({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "to": conn_id}))
+    await ws.send(json.dumps({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "id": conn_id}))
 
+    player.start()
 
-def on_error(ws, error):
-    print(error)
-
-def on_close(ws, close_status_code, close_msg):
-    print("### closed ###")
-
-def on_open(ws):
-    print("Opened connection")
-
-def init_websocket_client():
-    # 启动socket服务 
-    websocket.enableTrace(False)
-    ws = websocket.WebSocketApp("wss://cofi-ws.viseem.com?pid=server&client_type=server",
-                              on_open=on_open,
-                              on_message=on_message,
-                              on_error=on_error,
-                              on_close=on_close)
-    ws.run_forever()
+async def init_websocket():
+    uri = "wss://cofi-ws.viseem.com?pid=server&client_type=server"
+    async with websockets.connect(uri) as websocket:
+        while True:
+            msg = await websocket.recv()
+            await on_message(websocket, msg)
+            await asyncio.sleep(0.01)
+            
 
 if __name__ == '__main__':
-    app = web.Application()
+    # app = web.Application()
 
-    # 添加静态资源处理
-    # app.router.add_static('/static/', path='./static')
+    # 启动socket服务 
+    asyncio.run(init_websocket())
     
-    t = threading.Thread(target=init_websocket_client)
-    t.start()
-
-    app.router.add_get("/", index)
-    app.router.add_post("/offer", offer)
-    app.router.add_post("/jumpin", jump_in)
-    web.run_app(app, host='0.0.0.0', port=6300, ssl_context=None)
