@@ -279,17 +279,7 @@ ROOT = os.path.dirname(__file__)
 players = {}
 pcs = set()
 playlist = [
-    "videos/40_16000_0.mp4",
-    "videos/40_16000_1.mp4",
-    "videos/40_16000_2.mp4",
-    "videos/40_16000_3.mp4",
-    "videos/40_16000_4.mp4",
-    "videos/40_16000_5.mp4",
-    "videos/40_16000_6.mp4",
-    "videos/40_16000_7.mp4",
-    "videos/40_16000_8.mp4",
-    "videos/40_16000_9.mp4",
-    "videos/40_16000_10.mp4",
+    "videos/mm_2.mp4"
 ]
 
 
