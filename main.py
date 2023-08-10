@@ -12,6 +12,7 @@ import rel
 import time
 
 import aiortc
+from aiortc import RTCConfiguration, RTCIceServer
 import av
 import requests
 from aiohttp import web
@@ -313,7 +314,13 @@ async def on_message(ws, message):
 
     conn_id = client_id
     offer = RTCSessionDescription(sdp=sdp, type=type)
-    pc = RTCPeerConnection()
+    pc = RTCPeerConnection(configuration=RTCConfiguration(
+        iceServers=[
+            RTCIceServer('turn:stun.viseem.com:3478', username='test', credential='123456'),
+            RTCIceServer('stun:stun.viseem.com:3478'),
+
+        ])
+    )
     pcs.add(pc)
 
     player = SegmentPlayer(playlist=playlist)
